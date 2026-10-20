@@ -19,37 +19,39 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find and extract project ZIP
+      - name: Install unzip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+
+      - name: Extract Android project
         shell: bash
         run: |
           set -euo pipefail
 
+          mkdir -p extracted
+
           ZIP_PATH="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
 
-          if [ -z "$ZIP_PATH" ]; then
-            echo "ERROR: No project ZIP found in the repository root."
-            exit 1
+          if [ -n "$ZIP_PATH" ]; then
+            unzip -q "$ZIP_PATH" -d extracted
+          else
+            echo "No ZIP found. Looking for an uploaded project folder."
+            cp -a . extracted/
           fi
 
-          sudo apt-get update
-          sudo apt-get install -y unzip
-
-          mkdir -p extracted
-          unzip -q "$ZIP_PATH" -d extracted
-
-          echo "Extracted project files:"
-          find extracted -maxdepth 4 \
-            \( -name build.gradle -o -name build.gradle.kts -o -name settings.gradle -o -name settings.gradle.kts -o -name gradlew \) \
-            -print
-
-          PROJECT_DIR="$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs -r dirname)"
+          PROJECT_DIR="$(find extracted -type f \
+            \( -name settings.gradle.kts -o -name settings.gradle \) \
+            -print -quit | xargs -r dirname)"
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Could not find the Android project settings.gradle or settings.gradle.kts."
+            echo "ERROR: Android project settings file not found."
+            find extracted -maxdepth 3 -type f -print
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project found at: $PROJECT_DIR"
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -60,7 +62,32 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
+            cmake;3.22.1
+            ndk;26.1.10909125
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.2'
+
+      - name: Generate missing Gradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+
+          if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            gradle wrapper \
+              --gradle-version 8.2 \
+              --distribution-type bin
+          fi
+
+          chmod +x gradlew
+          test -f gradle/wrapper/gradle-wrapper.jar
 
       - name: Build debug APK
         shell: bash
@@ -68,14 +95,9 @@ jobs:
           set -euo pipefail
           cd "$PROJECT_DIR"
 
-          if [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-            ./gradlew :app:assembleDebug --no-daemon
-          else
-            echo "ERROR: Gradle wrapper (gradlew) not found."
-            echo "The project needs its Gradle wrapper or a compatible Gradle installation."
-            exit 1
-          fi
+          ./gradlew :app:assembleDebug \
+            --no-daemon \
+            --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
