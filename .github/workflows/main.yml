@@ -95,6 +95,7 @@ jobs:
             # Generate in an empty temp dir so the project's build scripts
             # are NOT evaluated with the wrong Gradle version.
             TMP="$(mktemp -d)"
+            touch "$TMP/settings.gradle"   # Gradle 8.9 refuses to run in a dir with no settings file
             (cd "$TMP" && gradle wrapper --gradle-version "$VER" --distribution-type bin)
 
             mkdir -p gradle/wrapper
