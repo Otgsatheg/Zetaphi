@@ -70,12 +70,8 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: |
-            platform-tools
-            platforms;android-34
-            build-tools;34.0.0
-            cmake;3.22.1
-            ndk;26.1.10909125
+          # Must be ONE line, space-separated (a multi-line list is read as a single package name)
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0 cmake;3.22.1 ndk;25.1.8937393'
 
       # Only used to bootstrap a wrapper if the project lacks one.
       - name: Set up Gradle
